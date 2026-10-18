@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nie Patrz Wstecz">
+<meta name="theme-color" content="#030406">
+<title>Nie Patrz Wstecz</title>
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="vignette"></div>
+<div id="fear"></div>
+<div id="hurt"></div>
+<canvas id="grain" width="160" height="90"></canvas>
+<div id="flash"></div>
+<canvas id="scare"></canvas>
+
+<div id="hud">
+  <div id="topLeft" class="panel">
+    <div id="night">NOC 1</div>
+    <div id="clock">22:00</div>
+    <div id="obj">Przetrwaj do 6:00</div>
+  </div>
+  <div id="keys" class="panel">
+    <div><b>E</b>akcja / ścinanie</div>
+    <div><b>B</b>ognisko (5 🪵)</div>
+    <div><b>Q</b>zjedz jagodę</div>
+    <div><b>T</b>pochodnia (2 🪵)</div>
+    <div><b>H</b>strzykawka lecznicza</div>
+    <div><b>R</b>wbij truciznę</div>
+    <div><b>F</b>latarka</div>
+    <div><b>⇧</b>sprint</div>
+  </div>
+  <div id="bars" class="panel">
+    <div class="bar" id="b-hp"><span>❤️</span><div class="track"><div class="fill" style="background:#e03131"></div></div><span class="val"></span></div>
+    <div class="bar" id="b-hunger"><span>🍖</span><div class="track"><div class="fill" style="background:#f08c00"></div></div><span class="val"></span></div>
+    <div class="bar" id="b-warmth"><span>🔥</span><div class="track"><div class="fill" style="background:#ff6b35"></div></div><span class="val"></span></div>
+    <div class="bar" id="b-stamina"><span>💨</span><div class="track"><div class="fill" style="background:#dee2e6"></div></div><span class="val"></span></div>
+    <div class="bar" id="b-battery"><span>🔦</span><div class="track"><div class="fill" style="background:#fcc419"></div></div><span class="val"></span></div>
+  </div>
+  <div id="inv" class="panel">
+    <span>🪵 <b id="wood">0</b></span>
+    <span>🫐 <b id="berries">0</b></span>
+    <span>🪔 <b id="torches">0</b><small id="torchTime"></small></span>
+    <span>💉 <b id="healS">0</b></span>
+    <span>☠️ <b id="poisonS">0</b></span>
+  </div>
+  <div id="hint" class="panel"></div>
+  <div id="msg"></div>
+  <div id="cross"></div>
+  <div id="touch">
+    <div id="lookZone"></div>
+    <div id="joyZone"><div id="joyBase"><div id="joyKnob"></div></div></div>
+    <button class="tb" id="tAct" aria-label="Akcja">✋</button>
+    <button class="tb" id="tJump" aria-label="Skok">⤒</button>
+    <button class="tb sm" id="tEat" aria-label="Zjedz jagodę">🫐</button>
+    <button class="tb sm" id="tFire" aria-label="Rozpal ognisko">🔥</button>
+    <button class="tb sm" id="tFlash" aria-label="Latarka">🔦</button>
+    <button class="tb sm" id="tTorch" aria-label="Pochodnia">🪔</button>
+    <button class="tb sm" id="tHeal" aria-label="Strzykawka lecznicza">💉</button>
+    <button class="tb sm" id="tStab" aria-label="Wbij truciznę">☠️</button>
+    <button id="tPause" aria-label="Pauza">❚❚</button>
+  </div>
+</div>
+
+<div id="menu" class="screen">
+  <div class="title">Nie Patrz Wstecz</div>
+  <div class="sub">Survival horror • Przetrwaj noc w lesie</div>
+  <div class="help mob">
+    <span><b>Lewy kciuk</b> chodzenie</span><span><b>Prawy kciuk</b> rozglądanie</span>
+    <span><b>Joystick do końca</b> sprint</span><span><b>⤒</b> skok</span>
+    <span><b>✋</b> ścinaj / zbieraj / dokładaj</span><span><b>🔥</b> rozpal ognisko (5 drewna)</span>
+    <span><b>🫐</b> zjedz jagodę</span><span><b>🔦</b> latarka</span>
+    <span><b>🪔</b> zrób / odpal pochodnię</span><span><b>💉</b> lecz &nbsp;<b>☠️</b> wbij truciznę</span>
+  </div>
+  <div class="help desk">
+    <span><b>WASD</b> ruch</span><span><b>Mysz</b> rozglądanie</span>
+    <span><b>Shift</b> sprint</span><span><b>Spacja</b> skok</span>
+    <span><b>E</b> ścinaj / zbieraj / dokładaj</span><span><b>B</b> rozpal ognisko (5 drewna)</span>
+    <span><b>Q</b> zjedz jagodę</span><span><b>F</b> latarka</span>
+    <span><b>T</b> zrób / odpal pochodnię</span><span><b>H</b> lecz &nbsp;<b>R</b> wbij truciznę</span>
+  </div>
+  <div class="tips">
+    Coś mieszka w tym lesie. Nie lubi światła — poświeć mu latarką prosto w twarz, a się cofnie.
+    Ognisko trzyma je na dystans i ogrzewa. Pilnuj baterii, jedzenia i ciepła.
+    Jeśli usłyszysz krzyk… biegnij do ognia.
+    W lesie stoi opuszczony szpital — znajdziesz tam strzykawki, ale nie wiesz, co w nich jest.
+    A Siostra rusza się tylko wtedy, gdy na nią nie patrzysz.
+  </div>
+  <button id="play">GRAJ</button>
+</div>
+
+<div id="pause" class="screen hidden">
+  <div class="title" style="font-size:72px">Pauza</div>
+  <div class="sub">Las czeka…</div>
+  <button id="resume">WRÓĆ</button>
+</div>
+
+<div id="over" class="screen hidden">
+  <div class="title">Koniec</div>
+  <div class="sub" id="cause"></div>
+  <div class="stats" id="overStats"></div>
+  <button id="retry" class="red">SPRÓBUJ PONOWNIE</button>
+</div>
+
+<div id="dawn" class="screen hidden">
+  <div class="title" id="dawnTitle">Świt</div>
+  <div class="sub" id="dawnSub"></div>
+  <div class="stats" id="dawnStats"></div>
+  <button id="nextNight">KOLEJNA NOC</button>
+</div>
+
+<div id="rotate" class="screen">
+  <div style="font-size:64px">📱↻</div>
+  <div class="sub">Obróć telefon poziomo</div>
+</div>
+
+<script src="src/lib/three.min.js"></script>
+<script src="src/game.js"></script>
+</body>
+</html>
