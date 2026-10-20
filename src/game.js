@@ -69,11 +69,25 @@ const groundTex = makeTex(64, 64, (g, w, h) => {
   for (let y = 4; y < h; y += 16) for (let x = 4; x < w; x += 16) g.fillRect(x, y, 8, 8);
 });
 groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
-groundTex.repeat.set(100, 100);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ map: groundTex }));
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
+// Abandoned hospital footprint (the building is made further down); the forest keeps clear of it
+const HOSP = { x: 60, z: -62, hw: 22, hd: 14 };
+const inHospital = (x, z, m = 0) => Math.abs(x - HOSP.x) < HOSP.hw + m && Math.abs(z - HOSP.z) < HOSP.hd + m;
+
+// ground in four pieces around the hospital, so the stairwell down to its basement stays open
+const groundMat = new THREE.MeshLambertMaterial({ map: groundTex });
+function groundPiece(x0, x1, z0, z1) {
+  const w = x1 - x0, d = z1 - z0;
+  const geo = new THREE.PlaneGeometry(w, d);
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 5, uv.getY(i) * d / 5); // one texture tile per 5 m
+  const m = new THREE.Mesh(geo, groundMat);
+  m.rotation.x = -Math.PI / 2; m.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2); m.receiveShadow = true;
+  scene.add(m);
+}
+{
+  const G = 250, x0 = HOSP.x - HOSP.hw, x1 = HOSP.x + HOSP.hw, z0 = HOSP.z - HOSP.hd, z1 = HOSP.z + HOSP.hd;
+  groundPiece(-G, G, -G, z0); groundPiece(-G, G, z1, G); groundPiece(-G, x0, z0, z1); groundPiece(x1, G, z0, z1);
+}
 
 // moon + stars (not affected by fog)
 const moon = new THREE.Mesh(new THREE.SphereGeometry(12, 16, 16), new THREE.MeshBasicMaterial({ color: 0xdfe6ff, fog: false }));
@@ -90,10 +104,6 @@ scene.add(moon);
   var stars = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xaab4d0, size: 1.2, fog: false, transparent: true, opacity: .8 }));
   scene.add(stars);
 }
-
-// Abandoned hospital footprint (the building is made further down); the forest keeps clear of it
-const HOSP = { x: 58, z: -58, hw: 16, hd: 10, h: 4.2 };
-const inHospital = (x, z, m = 0) => Math.abs(x - HOSP.x) < HOSP.hw + m && Math.abs(z - HOSP.z) < HOSP.hd + m;
 
 // --- Trees (instanced, choppable)
 const N_TREES = 950;
@@ -205,14 +215,14 @@ const batGeo = new THREE.BoxGeometry(0.3, 0.5, 0.3);
 const batMat = new THREE.MeshLambertMaterial({ color: 0xfcc419, emissive: 0x6a4c00 });
 const batCapGeo = new THREE.BoxGeometry(0.14, 0.1, 0.14);
 const batCapMat = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
-function addBattery(x, z) {
+function addBattery(x, z, y = 0) {
   const g = new THREE.Group();
   const b = new THREE.Mesh(batGeo, batMat); const c = new THREE.Mesh(batCapGeo, batCapMat); c.position.y = 0.3;
   g.add(b, c);
-  g.position.set(x, 0.5, z);
+  g.position.set(x, y + 0.5, z);
   g.userData.phase = rand(0, 6);
   scene.add(g);
-  batteries.push({ g, x, z, taken: false });
+  batteries.push({ g, x, z, y, taken: false });
 }
 for (let i = 0; i < 26; i++) {
   let x, z;
@@ -279,8 +289,11 @@ const torchLight = new THREE.PointLight(0xff8a3a, 0, 16, 1.6);
 scene.add(torchLight);
 
 // ===================================================================
-// Abandoned hospital
+// Abandoned hospital: basement, ground floor and first floor
 // ===================================================================
+const LV = 4.5;                 // floor-to-floor height
+const LEVEL_Y = [-LV, 0, LV];   // 0 basement, 1 ground floor, 2 first floor
+const levelOf = y => (y < -1.5 ? 0 : y < 3 ? 1 : 2);
 const hospital = new THREE.Group();
 scene.add(hospital);
 const concreteTex = makeTex(64, 64, (g, w, h) => {
@@ -292,51 +305,107 @@ const concreteTex = makeTex(64, 64, (g, w, h) => {
   g.fillStyle = 'rgba(20,20,20,.5)';
   for (let i = 0; i < 3; i++) { let x = rand(0, w), y = rand(0, h); for (let k = 0; k < 14; k++) { g.fillRect(x | 0, y | 0, 1, 1); x += rand(-1, 1.5); y += 1; } }
 });
-const tileTex = makeTex(64, 64, (g, w, h) => {
-  for (let ty = 0; ty < 8; ty++) for (let tx = 0; tx < 8; tx++) {
-    const v = (tx + ty) % 2 ? 150 : 120;
-    g.fillStyle = `rgb(${v - 8},${v + 4},${v})`; g.fillRect(tx * 8, ty * 8, 8, 8);
-  }
-  g.fillStyle = 'rgba(30,30,25,.4)';
-  for (let i = 0; i < 400; i++) g.fillRect(rand(0, w) | 0, rand(0, h) | 0, 1, 1);
-  g.fillStyle = 'rgba(60,50,35,.25)';
-  for (let i = 0; i < 6; i++) g.fillRect(rand(0, w), rand(0, h), rand(6, 20), rand(4, 14));
-});
-tileTex.wrapS = tileTex.wrapT = THREE.RepeatWrapping; tileTex.repeat.set(8, 5);
+function makeTiles(a, b, grime) {
+  const t = makeTex(64, 64, (g, w, h) => {
+    for (let ty = 0; ty < 8; ty++) for (let tx = 0; tx < 8; tx++) {
+      const v = (tx + ty) % 2 ? a : b;
+      g.fillStyle = `rgb(${v - 8},${v + 4},${v})`; g.fillRect(tx * 8, ty * 8, 8, 8);
+    }
+    g.fillStyle = 'rgba(30,30,25,.4)';
+    for (let i = 0; i < 400; i++) g.fillRect(rand(0, w) | 0, rand(0, h) | 0, 1, 1);
+    g.fillStyle = `rgba(60,50,35,${grime})`;
+    for (let i = 0; i < 8; i++) g.fillRect(rand(0, w), rand(0, h), rand(6, 20), rand(4, 14));
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 4);
+  return t;
+}
+const floorMat = new THREE.MeshLambertMaterial({ map: makeTiles(150, 120, 0.25) });
+const cellarFloorMat = new THREE.MeshLambertMaterial({ map: makeTiles(95, 80, 0.5) });
 const wallMat = new THREE.MeshLambertMaterial({ map: concreteTex });
+const cellarWallMat = new THREE.MeshLambertMaterial({ map: concreteTex, color: 0x8f897d });
 const walls = [];  // full-height colliders: block movement, sight and the camera
-const props = [];  // furniture colliders: block movement only
+const props = [];  // furniture and railings: block movement only
 const hx = lx => HOSP.x + lx, hz = lz => HOSP.z + lz;
 const W = HOSP.hw, D = HOSP.hd;
+// box centred at local (lx, lz) and world height y, optionally registered as a collider
 function box(w, h, d, mat, lx, y, lz, collider) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   m.position.set(hx(lx), y, hz(lz));
   m.castShadow = m.receiveShadow = true;
   hospital.add(m);
-  if (collider) collider.push({ x0: hx(lx) - w / 2, x1: hx(lx) + w / 2, z0: hz(lz) - d / 2, z1: hz(lz) + d / 2 });
+  if (collider) collider.push({ x0: hx(lx) - w / 2, x1: hx(lx) + w / 2, z0: hz(lz) - d / 2, z1: hz(lz) + d / 2, y0: y - h / 2, y1: y + h / 2 });
   return m;
 }
-// axis-aligned wall between two local points
-function wall(x0, z0, x1, z1) {
+// one-storey wall between two local points (axis-aligned)
+function wall(lvl, x0, z0, x1, z1) {
   const t = 0.4, w = Math.abs(x1 - x0) || t, d = Math.abs(z1 - z0) || t;
-  box(w, HOSP.h, d, wallMat, (x0 + x1) / 2, HOSP.h / 2, (z0 + z1) / 2, walls);
+  box(w, LV, d, lvl === 0 ? cellarWallMat : wallMat, (x0 + x1) / 2, LEVEL_Y[lvl] + LV / 2, (z0 + z1) / 2, walls);
 }
-// outer shell, front door in the middle of the south wall
-wall(-W, -D, W, -D); wall(-W, -D, -W, D); wall(W, -D, W, D);
-wall(-W, D, -1.6, D); wall(1.6, D, W, D);
-box(3.2, 1.2, 0.4, wallMat, 0, HOSP.h - 0.6, D);
-// corridor (z -1.5..1.5) with doorways into the wards
-[[-W, -13.8], [-12.2, -7.8], [-6.2, -4], [4, 6.2], [7.8, 12.2], [13.8, W]].forEach(([a, b]) => wall(a, 1.5, b, 1.5));
-[[-W, -12.8], [-11.2, -4.8], [-3.2, 3.2], [4.8, 11.2], [12.8, W]].forEach(([a, b]) => wall(a, -1.5, b, -1.5));
-wall(-4, 1.5, -4, D); wall(4, 1.5, 4, D); wall(-10, 1.5, -10, D); wall(10, 1.5, 10, D);
-wall(-8, -D, -8, -1.5); wall(0, -D, 0, -1.5); wall(8, -D, 8, -1.5);
+// wall running along x (at z = at) or along z (at x = at) from a to b, leaving the [g0, g1] gaps open
+function wallGaps(lvl, along, at, a, b, gaps) {
+  let s = a;
+  for (const [g0, g1] of gaps.slice().sort((p, q) => p[0] - q[0])) {
+    if (g0 > s) along === 'x' ? wall(lvl, s, at, g0, at) : wall(lvl, at, s, at, g0);
+    s = Math.max(s, g1);
+  }
+  if (b > s) along === 'x' ? wall(lvl, s, at, b, at) : wall(lvl, at, s, at, b);
+}
+const door = c => [c - 0.8, c + 0.8];
 
-const hFloor = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, D * 2), new THREE.MeshLambertMaterial({ map: tileTex }));
-hFloor.rotation.x = -Math.PI / 2; hFloor.position.set(HOSP.x, 0.03, HOSP.z); hFloor.receiveShadow = true;
-hospital.add(hFloor);
-box(W * 2 + 1, 0.4, D * 2 + 1, lam(0x4a4a46), 0, HOSP.h + 0.2, 0);
-box(4, 0.15, 2, lam(0x77746c), 0, 0.07, D + 1.2); // front step
+// stairs (local coords): west ramp ground floor ↔ basement, east ramp ground floor ↔ first floor
+const RAMP_W = { x0: -21.8, x1: -18.5, z0: -5, z1: 5, yA: 0, yB: -LV };
+const RAMP_E = { x0: 18.5, x1: 21.8, z0: -5, z1: 5, yA: 0, yB: LV };
+const inRamp = (r, x, z) => x > hx(r.x0) && x < hx(r.x1) && z > hz(r.z0) && z < hz(r.z1);
+const rampY = (r, z) => r.yA + (r.yB - r.yA) * (z - hz(r.z0)) / (r.z1 - r.z0);
 
+for (let lvl = 0; lvl < 3; lvl++) {
+  // outer shell, front door only on the ground floor
+  wall(lvl, -W, -D, W, -D); wall(lvl, -W, -D, -W, D); wall(lvl, W, -D, W, D);
+  wallGaps(lvl, 'x', D, -W, W, lvl === 1 ? [[-1.6, 1.6]] : []);
+  // central corridor (z -2..2) with ward doors; the ground floor has the lobby in the middle
+  wallGaps(lvl, 'x', -2, -16, 16, [-12, -4, 4, 12].map(door));
+  wallGaps(lvl, 'x', 2, -16, 16, lvl === 1 ? [door(-13), door(-7), [-4, 4], door(7), door(13)] : [-13, -7, 0, 7, 13].map(door));
+  [-8, 0, 8].forEach(x => wall(lvl, x, -D, x, -2));
+  [-10, -4, 4, 10].forEach(x => wall(lvl, x, 2, x, D));
+  // stair halls at both ends (z -7..7) with a small room in each corner
+  [-16, 16].forEach(x => { wall(lvl, x, -D, x, -2); wall(lvl, x, 2, x, D); });
+  [-7, 7].forEach(z => { wallGaps(lvl, 'x', z, -W, -16, [[-18, -16.4]]); wallGaps(lvl, 'x', z, 16, W, [[16.4, 18]]); });
+}
+const railMat = lam(0x5c6066);
+function rail(lvl, x0, z0, x1, z1) {
+  const t = 0.15, w = Math.abs(x1 - x0) || t, d = Math.abs(z1 - z0) || t;
+  box(w, 1.1, d, railMat, (x0 + x1) / 2, LEVEL_Y[lvl] + 0.55, (z0 + z1) / 2, props);
+}
+// railings round each stair hole, solid walls round the space under each ramp
+rail(1, RAMP_W.x1, RAMP_W.z0, RAMP_W.x1, RAMP_W.z1); rail(1, RAMP_W.x0, RAMP_W.z1, RAMP_W.x1, RAMP_W.z1);
+wall(0, RAMP_W.x1, RAMP_W.z0, RAMP_W.x1, RAMP_W.z1); wall(0, RAMP_W.x0, RAMP_W.z0, RAMP_W.x1, RAMP_W.z0);
+rail(2, RAMP_E.x0, RAMP_E.z0, RAMP_E.x0, RAMP_E.z1); rail(2, RAMP_E.x0, RAMP_E.z0, RAMP_E.x1, RAMP_E.z0);
+wall(1, RAMP_E.x0, RAMP_E.z0, RAMP_E.x0, RAMP_E.z1); wall(1, RAMP_E.x0, RAMP_E.z1, RAMP_E.x1, RAMP_E.z1);
+
+// floors / ceilings, each with a hole for its staircase
+function slab(yTop, thick, mat, hole) {
+  const parts = hole
+    ? [[-W, W, -D, hole.z0], [-W, W, hole.z1, D], [-W, hole.x0, hole.z0, hole.z1], [hole.x1, W, hole.z0, hole.z1]]
+    : [[-W, W, -D, D]];
+  for (const [x0, x1, z0, z1] of parts) {
+    if (x1 - x0 > 0.01 && z1 - z0 > 0.01) box(x1 - x0, thick, z1 - z0, mat, (x0 + x1) / 2, yTop - thick / 2, (z0 + z1) / 2);
+  }
+}
+slab(-LV, 0.3, cellarFloorMat);
+slab(0.04, 0.34, floorMat, RAMP_W);
+slab(LV, 0.3, floorMat, RAMP_E);
+slab(2 * LV + 0.3, 0.3, lam(0x4a4a46)); // roof
+const rampMat = lam(0x6e6a62);
+for (const r of [RAMP_W, RAMP_E]) {
+  const len = r.z1 - r.z0, rise = r.yB - r.yA;
+  const m = box(r.x1 - r.x0, 0.3, Math.hypot(len, rise), rampMat, (r.x0 + r.x1) / 2, (r.yA + r.yB) / 2 - 0.15, (r.z0 + r.z1) / 2);
+  m.rotation.x = -Math.atan2(rise, len);
+  for (let k = 1; k < 12; k++) box(r.x1 - r.x0, 0.06, 0.12, railMat, (r.x0 + r.x1) / 2, r.yA + rise * k / 12 + 0.01, r.z0 + len * k / 12).castShadow = false;
+}
+
+// front: lintel over the door, step, sign
+box(3.2, LV - 3, 0.4, wallMat, 0, 3 + (LV - 3) / 2, D);
+box(4, 0.15, 2, lam(0x77746c), 0, 0.07, D + 1.2);
 const signTex = makeTex(128, 32, g => {
   g.fillStyle = '#d8d3c4'; g.fillRect(0, 0, 128, 32);
   g.fillStyle = '#8a1010'; g.font = 'bold 22px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -345,78 +414,116 @@ const signTex = makeTex(128, 32, g => {
   g.fillStyle = 'rgba(60,50,30,.5)';
   for (let i = 0; i < 120; i++) g.fillRect(rand(0, 128) | 0, rand(0, 32) | 0, 2, 1);
 });
-const hSign = new THREE.Mesh(new THREE.PlaneGeometry(4, 1), new THREE.MeshLambertMaterial({ map: signTex }));
-hSign.position.set(hx(0), HOSP.h + 0.9, hz(D + 0.55)); hSign.rotation.z = 0.04;
+const hSign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.8), new THREE.MeshLambertMaterial({ map: signTex }));
+hSign.position.set(hx(0), 3.75, hz(D + 0.23)); hSign.rotation.z = 0.04;
 hospital.add(hSign);
 // red cross on a mast: glows through the fog so the hospital can be found
-box(0.25, 9, 0.25, lam(0x333333), 10, HOSP.h + 4.5, -5);
+const roofTop = 2 * LV + 0.3;
+box(0.25, 6, 0.25, lam(0x333333), 12, roofTop + 3, -6);
 const beaconMat = new THREE.MeshBasicMaterial({ color: 0xc01010, fog: false });
-box(2.4, 0.7, 0.7, beaconMat, 10, HOSP.h + 9.5, -5).castShadow = false;
-box(0.7, 2.4, 0.7, beaconMat, 10, HOSP.h + 9.5, -5).castShadow = false;
+box(2.4, 0.7, 0.7, beaconMat, 12, roofTop + 6.5, -6).castShadow = false;
+box(0.7, 2.4, 0.7, beaconMat, 12, roofTop + 6.5, -6).castShadow = false;
 
-// boarded-up windows
+// boarded-up windows on the two storeys above ground
 const glassMat = new THREE.MeshBasicMaterial({ color: 0x05080c });
 const plankMat = lam(0x4a3420);
-function windowAt(lx, lz, rotY) {
+function windowAt(lx, lz, rotY, y) {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 0.06), glassMat));
   for (let k = 0; k < 2; k++) {
     const p = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.18, 0.08), plankMat);
     p.position.set(0, k ? 0.2 : -0.25, 0.05); p.rotation.z = k ? 0.5 : -0.35; g.add(p);
   }
-  g.position.set(hx(lx), 2.3, hz(lz)); g.rotation.y = rotY;
+  g.position.set(hx(lx), y, hz(lz)); g.rotation.y = rotY;
   hospital.add(g);
 }
-[-12, -7, 7, 12].forEach(x => { windowAt(x, D + 0.22, 0); windowAt(x, -D - 0.22, Math.PI); });
-[-5, 5].forEach(z => { windowAt(W + 0.22, z, Math.PI / 2); windowAt(-W - 0.22, z, -Math.PI / 2); });
+for (const y of [2.3, LV + 2.3]) {
+  [-18, -12, -7, 7, 12, 18].forEach(x => { windowAt(x, D + 0.22, 0, y); windowAt(x, -D - 0.22, Math.PI, y); });
+  [-10, -4, 4, 10].forEach(z => { windowAt(W + 0.22, z, Math.PI / 2, y); windowAt(-W - 0.22, z, -Math.PI / 2, y); });
+}
 
 // furniture
 const metalMat = lam(0x6b7078), sheetMat = lam(0xb8b3a2), rustMat = lam(0x5a4636), woodMat = lam(0x5b4330);
-function bed(lx, lz, along) {
-  const L = 2.1, B = 1, w = along === 'x' ? L : B, d = along === 'x' ? B : L;
-  box(w, 0.5, d, metalMat, lx, 0.35, lz, props);
-  box(w - 0.1, 0.15, d - 0.1, sheetMat, lx, 0.67, lz);
-  if (along === 'x') box(0.08, 1.1, B, metalMat, lx - L / 2 + 0.05, 0.65, lz);
-  else box(B, 1.1, 0.08, metalMat, lx, 0.65, lz - L / 2 + 0.05);
+function bed(lvl, lx, lz, along) {
+  const b = LEVEL_Y[lvl], L = 2.1, B = 1, w = along === 'x' ? L : B, d = along === 'x' ? B : L;
+  box(w, 0.5, d, metalMat, lx, b + 0.35, lz, props);
+  box(w - 0.1, 0.15, d - 0.1, sheetMat, lx, b + 0.67, lz);
+  if (along === 'x') box(0.08, 1.1, B, metalMat, lx - L / 2 + 0.05, b + 0.65, lz);
+  else box(B, 1.1, 0.08, metalMat, lx, b + 0.65, lz - L / 2 + 0.05);
 }
-bed(-13, 7.5, 'z'); bed(-7, 7.5, 'z'); bed(7, 7.5, 'z'); bed(13.5, 6.5, 'z');
-bed(-12, -7.5, 'z'); bed(-4, -7.5, 'x'); bed(5, -7.5, 'z'); bed(12, -6, 'x');
-box(2, 0.12, 0.7, metalMat, 9, 0.9, 1.0, props); box(1.9, 0.1, 0.6, sheetMat, 9, 1.0, 1.0); // gurney
-[[-15.4, 3], [15.4, -3], [-8.6, -9.4], [8.6, 9.4], [-0.6, -9.4]].forEach(([x, z]) => box(0.8, 2, 0.8, rustMat, x, 1, z, props));
-box(2.6, 1.1, 0.8, woodMat, 2.3, 0.55, 5, props); // reception desk
-box(0.6, 0.5, 0.6, woodMat, -2.5, 0.25, 7.5, props);
+function gurney(lvl, lx, lz, body) {
+  const b = LEVEL_Y[lvl];
+  box(2, 0.12, 0.7, metalMat, lx, b + 0.9, lz, props);
+  box(1.9, 0.1, 0.6, sheetMat, lx, b + 1.0, lz);
+  if (body) { box(1.5, 0.26, 0.45, sheetMat, lx + 0.15, b + 1.17, lz); box(0.32, 0.3, 0.34, sheetMat, lx - 0.75, b + 1.2, lz); }
+}
+const cabinet = (lvl, lx, lz) => box(0.8, 2, 0.8, rustMat, lx, LEVEL_Y[lvl] + 1, lz, props);
+// ground floor: wards, reception, a gurney in the corridor
+[-12, -4, 4, 12].forEach((x, i) => bed(1, x + (i % 2 ? 1.5 : -1.5), -10.5, 'z'));
+[-13, -7, 7, 13].forEach(x => bed(1, x, 10.5, 'z'));
+box(2.6, 1.1, 0.8, woodMat, 2.3, 0.6, 8, props);
+box(0.6, 0.5, 0.6, woodMat, -2.5, 0.3, 10, props);
+gurney(1, 9, 1.2, false);
+cabinet(1, -15.4, -12); cabinet(1, 15.4, 12);
+// first floor: crowded wards and an operating theatre
+[-12, -4, 4, 12].forEach(x => { bed(2, x - 1.8, -10.5, 'z'); bed(2, x + 1.8, -10.5, 'z'); });
+[-13, -7, 7, 13].forEach(x => bed(2, x, 10.5, 'z'));
+box(1, 0.9, 2.2, metalMat, 0, LV + 0.45, 9, props);
+box(0.9, 0.1, 2, sheetMat, 0, LV + 0.95, 9);
+box(0.8, 0.9, 0.5, metalMat, 2.2, LV + 0.45, 9, props);
+box(1.2, 0.15, 1.2, new THREE.MeshBasicMaterial({ color: 0x9a9480 }), 0, 2 * LV - 0.6, 9).castShadow = false;
+gurney(2, -9, -1.2, true);
+cabinet(2, 15.4, -12);
+// basement: morgue, bodies under sheets, boilers and pipes
+const handleMat = lam(0xa0a6ad);
+[-12, -4].forEach(x => {
+  box(6.8, 2.4, 0.9, metalMat, x, -LV + 1.2, -13.3, props);
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) box(0.4, 0.08, 0.06, handleMat, x - 2.4 + c * 1.6, -LV + 0.5 + r * 0.75, -12.83).castShadow = false;
+});
+gurney(0, 4, -8, true); gurney(0, 12, -9, true); gurney(0, -12, -6, true);
+box(2.2, 3.2, 2.2, rustMat, -13, -LV + 1.6, 10, props);
+box(2.2, 3.2, 2.2, rustMat, 13, -LV + 1.6, 10, props);
+box(32, 0.25, 0.25, rustMat, 0, -0.7, 1.5).castShadow = false;
+box(32, 0.25, 0.25, rustMat, 0, -0.95, -1.6).castShadow = false;
+box(1, 1, 1, woodMat, 7, -LV + 0.5, 12, props); box(1, 1, 1, woodMat, 8.2, -LV + 0.5, 12.3, props); box(1, 1, 1, woodMat, 7.6, -LV + 1.5, 12.1);
 
 const bloodTex = makeTex(32, 32, g => {
   g.fillStyle = 'rgba(90,0,0,.85)';
   for (let i = 0; i < 14; i++) { g.beginPath(); g.arc(16 + rand(-9, 9), 16 + rand(-9, 9), rand(2, 7), 0, 7); g.fill(); }
 });
 const bloodMat = new THREE.MeshLambertMaterial({ map: bloodTex, transparent: true, depthWrite: false });
-[[-6, 0, 2.5], [-13, 5, 1.6], [3, -6, 2], [12, 0.5, 1.4], [0, 8, 1.2]].forEach(([x, z, sz]) => {
+[[1, -6, 0, 2.5], [1, -13, 5, 1.6], [1, 3, -6, 2], [2, 12, 0.5, 1.4], [2, 0, 8, 1.6], [2, -9, -1, 2], [0, -3, 0, 3], [0, 12, -9, 2], [0, -12, 9, 1.8]].forEach(([lvl, x, z, sz]) => {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(sz, sz), bloodMat);
-  m.rotation.set(-Math.PI / 2, 0, rand(0, 6)); m.position.set(hx(x), 0.05, hz(z));
+  m.rotation.set(-Math.PI / 2, 0, rand(0, 6));
+  m.position.set(hx(x), (lvl === 1 ? 0.04 : LEVEL_Y[lvl]) + 0.02, hz(z));
   hospital.add(m);
 });
 
-// flickering ceiling lamps
-const lamps = [[-8, 0], [8, 0], [0, 6]].map(([x, z]) => {
-  const fix = box(1.4, 0.1, 0.3, new THREE.MeshBasicMaterial({ color: 0xdff2ff }), x, HOSP.h - 0.08, z);
-  fix.castShadow = false;
-  const l = new THREE.PointLight(0xcfe6ff, 0, 13, 1.8);
-  l.position.set(hx(x), HOSP.h - 0.5, hz(z));
-  scene.add(l);
-  return { fix, l, t: rand(0, 3), on: true };
-});
+// flickering ceiling lamps on every storey; only the storey you're on gets real lights
+const LAMP_SPOTS = [[[-10, 0], [10, 0], [0, -8]], [[-10, 0], [10, 0], [0, 8]], [[-10, 0], [10, 0], [-19, 0]]];
+const lampFix = LAMP_SPOTS.map((spots, lvl) => spots.map(([x, z]) => {
+  const m = box(1.4, 0.1, 0.3, new THREE.MeshBasicMaterial({ color: 0xdff2ff }), x, LEVEL_Y[lvl] + LV - 0.4, z);
+  m.castShadow = false;
+  return { m, x, z, lvl, t: rand(0, 3), on: true };
+}));
+const lampLights = LAMP_SPOTS[0].map(() => { const l = new THREE.PointLight(0xcfe6ff, 0, 13, 1.8); scene.add(l); return l; });
 
-addBattery(hx(15), hz(-9));
-addBattery(hx(-15), hz(9));
+addBattery(hx(19), hz(11), 0.04);
+addBattery(hx(-19), hz(11), LV);
+addBattery(hx(19), hz(-11), -LV);
+addBattery(hx(-12), hz(-9), -LV);
 
 // syringes: they all look the same, you only learn what's inside after picking one up
 const syringes = [];
-const SYR_SPOTS = [[-13, 4], [-7, 9], [7, 3.5], [13, 9], [-12.5, -4], [-5, -9], [5.5, -3.5], [12, -9], [-1.5, 8.5], [-14, -0.6], [14.5, 0.8], [2.5, -6]];
+const SYR_SPOTS = [
+  [0, -12, -9], [0, -4, -10], [0, 5, -11], [0, 14.5, -11], [0, -7, 9], [0, 11, 7], [0, 19, 10], [0, -19, -10],
+  [1, -13, -8], [1, -4, -6], [1, 12, -10], [1, -14.5, 6], [1, 7, 7], [1, -1.5, 11], [1, 19, -11], [1, -19, 11],
+  [2, -12, -10], [2, 4, -8], [2, 12, -6], [2, -8.5, 6], [2, -2.5, 6], [2, 14.5, 5], [2, -19, -11], [2, 19, 11],
+];
 const syrBodyMat = new THREE.MeshLambertMaterial({ color: 0xe6eef2, emissive: 0x223038 });
 const syrLiquidMat = new THREE.MeshBasicMaterial({ color: 0x3fb7ff });
 const syrMetalMat = lam(0x9aa0a6);
-function makeSyringe(lx, lz) {
+function makeSyringe(lvl, lx, lz) {
   const g = new THREE.Group();
   const liquid = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.06, 0.1), syrLiquidMat); liquid.position.x = 0.05;
   const plunger = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.05), syrMetalMat); plunger.position.x = -0.26;
@@ -424,21 +531,23 @@ function makeSyringe(lx, lz) {
   const needle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.015, 0.015), syrMetalMat); needle.position.x = 0.29;
   g.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.09, 0.09), syrBodyMat), liquid, plunger, thumb, needle);
   g.scale.setScalar(1.4);
-  g.position.set(hx(lx), 0.12, hz(lz)); g.rotation.y = rand(0, 6);
+  const y = lvl === 1 ? 0.04 : LEVEL_Y[lvl];
+  g.position.set(hx(lx), y + 0.12, hz(lz)); g.rotation.y = rand(0, 6);
   hospital.add(g);
-  return { g, x: g.position.x, z: g.position.z, taken: false };
+  return { g, x: g.position.x, z: g.position.z, y, taken: false };
 }
 function placeSyringes() {
   syringes.forEach(sy => hospital.remove(sy.g));
   syringes.length = 0;
-  const spots = SYR_SPOTS.slice().sort(() => Math.random() - 0.5).slice(0, 8);
-  for (const [x, z] of spots) syringes.push(makeSyringe(x, z));
+  const spots = SYR_SPOTS.slice().sort(() => Math.random() - 0.5).slice(0, 14);
+  for (const [lvl, x, z] of spots) syringes.push(makeSyringe(lvl, x, z));
 }
 placeSyringes();
 
-// --- Hospital monsters: Patients (hunt by sight, fear fire) and the Nurse (moves only when unseen)
+// --- Hospital monsters: Patients (hunt by sight, fear fire), the Nurse (moves only when unseen)
+//     and the Crawler in the basement (blind, hunts by sound)
 const patients = [];
-const PATIENT_HOME = [[-13, 5], [12, -4], [-4, -5], [-12, 0]];
+const PATIENT_HOME = [[1, -12, -8], [1, 7, 7], [2, -4, -8], [2, 13, 7], [2, -12, 0]];
 function makePatient() {
   const g = new THREE.Group();
   const legL = limb(0.26, 0.95, 0.26, 0x6f6a5c, -0.18, 0.95), legR = limb(0.26, 0.95, 0.26, 0x6f6a5c, 0.18, 0.95);
@@ -481,17 +590,42 @@ const NURSE = (() => {
   g.add(legL, legR, skirt, top, headP, aL, aR);
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   scene.add(g);
-  return { g, headP, aL, aR, sx: hx(14.5), sz: hz(0), stun: 0, moved: true, wake: 0, creakT: 0, seenOnce: false };
+  return { g, headP, aL, aR, level: 2, sx: hx(-19), sz: hz(0), stun: 0, moved: true, wake: 0, creakT: 0, seenOnce: false };
+})();
+
+const CRAWLER = (() => {
+  const g = new THREE.Group();
+  const skin = lam(0x9c9483), black = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.35, 1.4), skin); body.position.y = 0.75;
+  const head = new THREE.Group(); head.position.set(0, 0.8, 0.85);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.02), black); mouth.position.set(0, -0.05, 0.23);
+  head.add(new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.38, 0.45), skin), mouth);
+  const toothMat = lam(0xe8e2d0);
+  for (let k = 0; k < 4; k++) {
+    const t = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.02), toothMat);
+    t.position.set(-0.12 + k * 0.08, 0.03, 0.24); head.add(t);
+  }
+  const limbs = [[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => {
+    const l = limb(0.1, 1.1, 0.1, 0x9c9483, sx * 0.3, 0.85);
+    l.position.z = sz * 0.55; l.rotation.z = sx * 0.7; g.add(l); return l;
+  });
+  g.add(body, head);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(g);
+  return { g, head, limbs, level: 0, home: [12, 0], anim: 0 };
 })();
 
 function resetHospital() {
   patients.forEach((p, i) => {
-    const [x, z] = PATIENT_HOME[i];
-    Object.assign(p, { state: 'wander', dead: 0, home: [hx(x), hz(z)], tx: hx(x), tz: hz(z), wt: 0, hitCD: 0, lost: 0, groanT: rand(2, 8) });
-    p.g.position.set(hx(x), 0, hz(z)); p.g.rotation.set(0, rand(0, 6), 0); p.g.visible = true;
+    const [lvl, x, z] = PATIENT_HOME[i];
+    Object.assign(p, { level: lvl, state: 'wander', dead: 0, home: [hx(x), hz(z)], tx: hx(x), tz: hz(z), wt: 0, hitCD: 0, lost: 0, groanT: rand(2, 8) });
+    p.g.position.set(hx(x), LEVEL_Y[lvl], hz(z)); p.g.rotation.set(0, rand(0, 6), 0); p.g.visible = true;
   });
-  NURSE.g.position.set(NURSE.sx, 0, NURSE.sz); NURSE.g.rotation.set(0, -Math.PI / 2, 0);
+  NURSE.g.position.set(NURSE.sx, LEVEL_Y[NURSE.level], NURSE.sz); NURSE.g.rotation.set(0, Math.PI / 2, 0);
   NURSE.stun = 0; NURSE.wake = 0; NURSE.moved = true;
+  const c = CRAWLER;
+  Object.assign(c, { state: 'idle', t: 0, dead: 0, hitCD: 0, clickT: 1, tx: hx(c.home[0]), tz: hz(c.home[1]) });
+  c.g.position.set(hx(c.home[0]), LEVEL_Y[0], hz(c.home[1])); c.g.rotation.set(0, rand(0, 6), 0);
 }
 resetHospital();
 
@@ -684,6 +818,8 @@ const SFX = {
   drip: () => tone(rand(1500, 2100), 0.06, { to: 900, vol: 0.05 }),
   clank: pan => { noise(0.5, { type: 'bandpass', freq: 380, q: 12, vol: 0.25, pan }); tone(170, 0.8, { type: 'square', vol: 0.025, pan }); },
   hiss: () => noise(0.6, { type: 'highpass', freq: 2000, vol: 0.15, attack: 0.02 }),
+  crawlerShriek: pan => { tone(1400, 0.7, { type: 'square', to: 500, vol: 0.07, vib: 90, vibRate: 25, pan }); noise(0.5, { type: 'highpass', freq: 2500, vol: 0.2, pan }); },
+  click2: (pan, v) => noise(0.02, { type: 'bandpass', freq: 2600, q: 10, vol: 0.3 * v, pan }),
 };
 
 // ===================================================================
@@ -709,6 +845,7 @@ let ambT = 8, heartT = 0, crackleT = 0;
 let flickerT = 0;
 let boundaryWarned = false;
 let insideK = 0;
+let pMoving = false, pSprinting = false;
 const keys = {};
 
 // ===================================================================
@@ -976,6 +1113,11 @@ function usePoison() {
     SFX.stab(); showMsg('Pacjent osuwa się na podłogę…', '#b197fc');
     return;
   }
+  if (CRAWLER.state !== 'dead' && CRAWLER.g.position.distanceTo(pp) < 2.8) {
+    S.poisonSyr--; armSwing = 1; CRAWLER.state = 'dead'; CRAWLER.dead = 0.001;
+    SFX.stab(); showMsg('Pełzacz wije się i nieruchomieje…', '#b197fc');
+    return;
+  }
   if (inHospital(pp.x, pp.z) && NURSE.g.position.distanceTo(pp) < 2.8) {
     S.poisonSyr--; armSwing = 1; NURSE.stun = 10;
     SFX.stab(); showMsg('Siostra zamarła… masz chwilę!', '#b197fc');
@@ -992,7 +1134,8 @@ function findTarget() {
   const px = player.position.x, pz = player.position.z;
   const f = forward2();
   let best = null, bs = 1e9;
-  const consider = (type, obj, x, z, range) => {
+  const consider = (type, obj, x, z, range, y = 0) => {
+    if (Math.abs(y - player.position.y) > 1.8) return;
     const dx = x - px, dz = z - pz, d = Math.hypot(dx, dz);
     if (d > range) return;
     const dot = (dx * f.x + dz * f.z) / (d || 1);
@@ -1002,9 +1145,9 @@ function findTarget() {
   };
   for (const t of trees) if (t.alive && Math.abs(t.x - px) < 4 && Math.abs(t.z - pz) < 4) consider('tree', t, t.x, t.z, 1.9 + t.s * 0.5);
   for (const b of bushes) if (b.berries.some(x => x.visible)) consider('bush', b, b.x, b.z, 2.5);
-  for (const b of batteries) if (!b.taken) consider('battery', b, b.x, b.z, 2.2);
+  for (const b of batteries) if (!b.taken) consider('battery', b, b.x, b.z, 2.2, b.y);
   for (const fi of fires) consider('fire', fi, fi.x, fi.z, 3.2);
-  for (const sy of syringes) if (!sy.taken) consider('syringe', sy, sy.x, sy.z, 2.0);
+  for (const sy of syringes) if (!sy.taken) consider('syringe', sy, sy.x, sy.z, 2.0, sy.y);
   return best;
 }
 function interact() {
@@ -1067,6 +1210,18 @@ function drawScare(kind = 'stwor') {
   const c = $('scare'); c.width = innerWidth; c.height = innerHeight;
   const g = c.getContext('2d'); const w = c.width, h = c.height, cx = w / 2, cy = h / 2, s = Math.min(w, h);
   g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
+  if (kind === 'crawler') {
+    g.fillStyle = '#8f887a'; g.fillRect(cx - s * 0.32, cy - s * 0.4, s * 0.64, s * 0.7);
+    g.fillStyle = '#000'; g.fillRect(cx - s * 0.26, cy - s * 0.12, s * 0.52, s * 0.36);
+    g.fillStyle = '#e8e2d0';
+    const n = 11, tw = (s * 0.52) / n;
+    for (let i = 0; i < n; i++) {
+      const x0 = cx - s * 0.26 + i * tw;
+      g.beginPath(); g.moveTo(x0, cy - s * 0.12); g.lineTo(x0 + tw, cy - s * 0.12); g.lineTo(x0 + tw / 2, cy - s * 0.02); g.fill();
+      g.beginPath(); g.moveTo(x0, cy + s * 0.24); g.lineTo(x0 + tw, cy + s * 0.24); g.lineTo(x0 + tw / 2, cy + s * 0.14); g.fill();
+    }
+    return;
+  }
   if (kind === 'nurse') {
     g.fillStyle = '#cfc8b6'; g.fillRect(cx - s * 0.27, cy - s * 0.42, s * 0.54, s * 0.95);
     g.fillStyle = '#eeeeee'; g.fillRect(cx - s * 0.3, cy - s * 0.6, s * 0.6, s * 0.2);
@@ -1293,9 +1448,10 @@ function fmtClock(mins) {
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
-// circle vs axis-aligned boxes
-function pushOut(x, z, r, list) {
+// circle vs axis-aligned boxes, only those overlapping the storey at height y
+function pushOut(x, z, r, list, y) {
   for (const w of list) {
+    if (w.y0 > y + 1.8 || w.y1 < y + 0.2) continue;
     const cx = clamp(x, w.x0, w.x1), cz = clamp(z, w.z0, w.z1);
     const dx = x - cx, dz = z - cz, d2 = dx * dx + dz * dz;
     if (d2 >= r * r) continue;
@@ -1307,16 +1463,17 @@ function pushOut(x, z, r, list) {
   }
   return [x, z];
 }
-function collideWalls(x, z, r) {
+function collideWalls(x, z, r, y) {
   if (!inHospital(x, z, 2)) return [x, z];
-  [x, z] = pushOut(x, z, r, walls);
-  return pushOut(x, z, r, props);
+  [x, z] = pushOut(x, z, r, walls, y);
+  return pushOut(x, z, r, props, y);
 }
-// fraction (0..1) of the segment a→b before it hits a hospital wall
-function rayT(ax, az, bx, bz, m = 0) {
+// fraction (0..1) of the segment a→b, at height y, before it hits a hospital wall
+function rayT(ax, az, bx, bz, m, y) {
   let best = 1;
   const dx = bx - ax, dz = bz - az;
   for (const w of walls) {
+    if (w.y0 > y || w.y1 < y) continue;
     let t0 = 0, t1 = 1, miss = false;
     for (const [a, d, lo, hi] of [[ax, dx, w.x0 - m, w.x1 + m], [az, dz, w.z0 - m, w.z1 + m]]) {
       if (Math.abs(d) < 1e-9) { if (a < lo || a > hi) { miss = true; break; } continue; }
@@ -1329,7 +1486,17 @@ function rayT(ax, az, bx, bz, m = 0) {
   }
   return best;
 }
-const losClear = (ax, az, bx, bz) => rayT(ax, az, bx, bz) >= 1;
+const losClear = (ax, az, bx, bz, y) => rayT(ax, az, bx, bz, 0, y) >= 1;
+// floor height under (x, z) for someone standing at height y: hospital storeys and stairs
+function groundAt(x, z, y) {
+  if (!inHospital(x, z)) return 0;
+  let best = -LV;
+  const cand = h => { if (h <= y + 0.75 && h > best) best = h; };
+  if (inRamp(RAMP_W, x, z)) cand(rampY(RAMP_W, z)); else cand(0.04);
+  if (inRamp(RAMP_E, x, z)) cand(rampY(RAMP_E, z)); else cand(LV);
+  return best;
+}
+const playerLevel = () => levelOf(player.position.y + 0.5);
 
 function updatePatients(dt, inside) {
   const pp = player.position;
@@ -1339,12 +1506,14 @@ function updatePatients(dt, inside) {
       if (p.dead > 0 && p.dead < 1) { p.dead += dt; g.rotation.x = -Math.min(1, p.dead * 2) * Math.PI / 2 * 0.95; }
       continue;
     }
+    const ly = LEVEL_Y[p.level];
+    const onLevel = inside && playerLevel() === p.level;
     const dx = pp.x - g.position.x, dz = pp.z - g.position.z, d = Math.hypot(dx, dz);
-    const sees = inside && d < 13 && losClear(g.position.x, g.position.z, pp.x, pp.z);
+    const sees = onLevel && d < 13 && losClear(g.position.x, g.position.z, pp.x, pp.z, ly + 1.5);
     if (sees) {
       if (p.state !== 'chase') { p.state = 'chase'; SFX.patientScream(screenPan(-dx, -dz)); S.fear = Math.min(100, S.fear + 20); }
       p.tx = pp.x; p.tz = pp.z; p.lost = 0;
-    } else if (p.state === 'chase') { p.lost += dt; if (p.lost > 6) p.state = 'wander'; }
+    } else if (p.state === 'chase') { p.lost += dt; if (p.lost > 6 || !onLevel) p.state = 'wander'; }
     let speed = 1.1;
     if (p.state === 'chase') speed = (4.3 + (S.night - 1) * 0.3) * DF.speed;
     else {
@@ -1356,14 +1525,13 @@ function updatePatients(dt, inside) {
       }
     }
     let mx = p.tx - g.position.x, mz = p.tz - g.position.z;
-    const torchNear = S.torchLit && d < 3.4;
+    const torchNear = onLevel && S.torchLit && d < 3.4;
     if (torchNear) { mx = -dx; mz = -dz; speed = 2; } // flinch away from the flame
     const ml = Math.hypot(mx, mz);
-    if (ml > 0.05 && (torchNear || d > 0.95)) {
+    if (ml > 0.05 && (torchNear || !onLevel || d > 0.95)) {
       let nx = g.position.x + mx / ml * speed * dt, nz = g.position.z + mz / ml * speed * dt;
-      [nx, nz] = collideWalls(nx, nz, 0.4);
-      g.position.x = clamp(nx, hx(-W + 0.6), hx(W - 0.6));
-      g.position.z = clamp(nz, hz(-D + 0.6), hz(D - 0.6));
+      [nx, nz] = collideWalls(nx, nz, 0.4, ly);
+      g.position.set(clamp(nx, hx(-W + 0.6), hx(W - 0.6)), ly, clamp(nz, hz(-D + 0.6), hz(D - 0.6)));
       const want = torchNear ? Math.atan2(dx, dz) : Math.atan2(mx, mz);
       let dr = want - g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
       g.rotation.y += dr * Math.min(1, dt * 6);
@@ -1375,36 +1543,38 @@ function updatePatients(dt, inside) {
     p.armR.rotation.x = -1.2 - Math.sin(p.anim * 1.1) * 0.15;
     p.headP.rotation.z = Math.sin(p.anim * 0.7) * 0.3 + (Math.random() < 0.03 ? rand(-0.4, 0.4) : 0);
     p.hitCD -= dt;
-    if (inside && d < 1.25 && p.hitCD <= 0 && !torchNear) { p.hitCD = 1.4; hurt(18, 'Pacjenci szpitala cię dopadli.'); SFX.patientScream(0); }
+    if (onLevel && d < 1.25 && p.hitCD <= 0 && !torchNear) { p.hitCD = 1.4; hurt(18, 'Pacjenci szpitala cię dopadli.'); SFX.patientScream(0); }
     p.groanT -= dt;
-    if (p.groanT <= 0) { p.groanT = rand(4, 9); if (d < 18) SFX.groan(screenPan(-dx, -dz), clamp(1 - d / 18, 0.1, 1)); }
+    if (p.groanT <= 0) { p.groanT = rand(4, 9); if (onLevel && d < 18) SFX.groan(screenPan(-dx, -dz), clamp(1 - d / 18, 0.1, 1)); }
   }
 }
 
 const NV1 = new THREE.Vector3(), NV2 = new THREE.Vector3();
 function updateNurse(dt, inside) {
-  const n = NURSE, g = n.g, pp = player.position;
-  if (!inside) {
+  const n = NURSE, g = n.g, pp = player.position, ly = LEVEL_Y[n.level];
+  if (!inside || playerLevel() !== n.level) {
     n.wake = 0;
-    // while you're outside she quietly goes back to the end of the corridor
-    if (!onScreen(NV1.set(g.position.x, 2, g.position.z)) || g.position.distanceTo(pp) > 25) { g.position.set(n.sx, 0, n.sz); n.moved = true; }
+    // while you're away she quietly goes back to her end of the corridor
+    if (!onScreen(NV1.set(g.position.x, ly + 2, g.position.z)) || g.position.distanceTo(pp) > 25) { g.position.set(n.sx, ly, n.sz); n.moved = true; }
     return;
   }
   n.wake += dt;
   if (n.stun > 0) { n.stun -= dt; g.rotation.z = Math.sin(S.totalTime * 30) * 0.03; return; }
   g.rotation.z = 0;
   const dx = pp.x - g.position.x, dz = pp.z - g.position.z, d = Math.hypot(dx, dz);
-  NV1.set(g.position.x, 2.7, g.position.z); NV2.set(g.position.x, 1.3, g.position.z);
+  NV1.set(g.position.x, ly + 2.7, g.position.z); NV2.set(g.position.x, ly + 1.3, g.position.z);
   // she only freezes when you can actually see her: flashlight, torch or a working ceiling lamp
-  const underLamp = lamps.some(L => L.on && Math.hypot(L.l.position.x - g.position.x, L.l.position.z - g.position.z) < 3.5);
+  const underLamp = lampFix[n.level].some(L => L.on && Math.hypot(hx(L.x) - g.position.x, hz(L.z) - g.position.z) < 3.5);
   const lit = isLit(NV1) || isLit(NV2) || (S.torchLit && d < 9) || underLamp;
-  const visible = lit && (onScreen(NV1) || onScreen(NV2)) && losClear(camera.position.x, camera.position.z, g.position.x, g.position.z);
+  const visible = lit && (onScreen(NV1) || onScreen(NV2)) && losClear(camera.position.x, camera.position.z, g.position.x, g.position.z, ly + 1.5);
   if (!visible && n.wake > 5) {
     n.moved = true;
     const sp = (3.4 + (S.night - 1) * 0.4) * DF.speed;
     if (d > 0.01) {
-      g.position.x = clamp(g.position.x + dx / d * sp * dt, hx(-W + 0.5), hx(W - 0.5));
-      g.position.z = clamp(g.position.z + dz / d * sp * dt, hz(-D + 0.5), hz(D - 0.5));
+      let nx = clamp(g.position.x + dx / d * sp * dt, hx(-W + 0.5), hx(W - 0.5));
+      const nz = clamp(g.position.z + dz / d * sp * dt, hz(-D + 0.5), hz(D - 0.5));
+      if (inRamp(RAMP_E, nx, nz)) nx = hx(RAMP_E.x0) - 0.3; // never over the stair hole
+      g.position.set(nx, ly, nz);
     }
     g.rotation.y = Math.atan2(dx, dz);
     n.creakT -= dt;
@@ -1420,7 +1590,62 @@ function updateNurse(dt, inside) {
   }
   if (d < 1.15) {
     hurt(45, 'Siostra cię dopadła.', 'nurse');
-    g.position.set(n.sx, 0, n.sz); n.stun = 5; n.moved = true;
+    g.position.set(n.sx, ly, n.sz); n.stun = 5; n.moved = true;
+  }
+}
+
+// the Crawler is blind: sprinting carries far, walking only close by, standing still is safe
+function updateCrawler(dt, inside) {
+  const c = CRAWLER, g = c.g, pp = player.position, ly = LEVEL_Y[c.level];
+  if (c.state === 'dead') {
+    if (c.dead < 1) { c.dead += dt; g.rotation.z = Math.min(1, c.dead * 2) * Math.PI * 0.9; }
+    return;
+  }
+  const onLevel = inside && playerLevel() === c.level;
+  const dx = pp.x - g.position.x, dz = pp.z - g.position.z, d = Math.hypot(dx, dz);
+  const heardFrom = !onLevel ? 0 : pSprinting ? 18 : pMoving ? 6 : 0;
+  if (d < heardFrom) {
+    if (c.state !== 'hunt') { SFX.crawlerShriek(screenPan(-dx, -dz)); S.fear = Math.min(100, S.fear + 25); }
+    c.state = 'hunt'; c.tx = pp.x; c.tz = pp.z; c.t = 2.5;
+  }
+  const torchNear = onLevel && S.torchLit && d < 4;
+  let speed = 0, tx = c.tx, tz = c.tz;
+  if (torchNear) { tx = g.position.x - dx; tz = g.position.z - dz; speed = 3; }
+  else if (c.state === 'hunt') {
+    speed = 7 * DF.speed; c.t -= dt;
+    if (c.t <= 0 || Math.hypot(c.tx - g.position.x, c.tz - g.position.z) < 0.6) { c.state = 'listen'; c.t = rand(1.5, 3); }
+  } else if (c.state === 'listen') {
+    c.t -= dt; if (c.t <= 0) { c.state = 'idle'; c.t = 0; }
+  } else {
+    c.t -= dt; speed = 0.9;
+    if (c.t <= 0) {
+      c.t = rand(3, 6);
+      c.tx = hx(clamp(c.home[0] + rand(-6, 6), -W + 1, W - 1));
+      c.tz = hz(clamp(c.home[1] + rand(-6, 6), -D + 1, D - 1));
+    }
+    tx = c.tx; tz = c.tz;
+  }
+  const mx = tx - g.position.x, mz = tz - g.position.z, ml = Math.hypot(mx, mz);
+  if (speed > 0 && ml > 0.1 && (torchNear || !onLevel || d > 0.9)) {
+    let nx = g.position.x + mx / ml * speed * dt, nz = g.position.z + mz / ml * speed * dt;
+    [nx, nz] = collideWalls(nx, nz, 0.45, ly);
+    g.position.set(clamp(nx, hx(-W + 0.6), hx(W - 0.6)), ly, clamp(nz, hz(-D + 0.6), hz(D - 0.6)));
+    let dr = Math.atan2(mx, mz) - g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+    g.rotation.y += dr * Math.min(1, dt * 8);
+  }
+  c.anim += dt * (speed + 0.5) * 2.5;
+  c.limbs.forEach((l, i) => { l.rotation.x = Math.sin(c.anim + i * 1.6) * 0.5; });
+  c.head.rotation.z = Math.sin(c.anim * 0.5) * 0.3;
+  c.head.rotation.y = c.state === 'listen' ? Math.sin(S.totalTime * 3) * 0.6 : 0;
+  c.hitCD -= dt;
+  if (onLevel && d < 1.3 && c.hitCD <= 0 && !torchNear) {
+    c.hitCD = 1.6; c.state = 'listen'; c.t = 2;
+    hurt(30, 'Coś w piwnicy usłyszało twoje kroki.', 'crawler');
+  }
+  c.clickT -= dt;
+  if (c.clickT <= 0) {
+    c.clickT = c.state === 'hunt' ? 0.12 : rand(0.6, 1.4);
+    if (onLevel && d < 16) SFX.click2(screenPan(-dx, -dz), clamp(1 - d / 16, 0.1, 1));
   }
 }
 
@@ -1436,7 +1661,7 @@ function collide(x, z, r) {
     const dx = x - b.x, dz = z - b.z, d = Math.hypot(dx, dz), rr = 0.75 + r;
     if (d < rr && d > 0.0001) { x = b.x + dx / d * rr; z = b.z + dz / d * rr; }
   }
-  return collideWalls(x, z, r);
+  return collideWalls(x, z, r, player.position.y);
 }
 
 const fearEl = $('fear'), flashEl = $('flash');
@@ -1496,6 +1721,7 @@ function update(dt) {
   if (sprinting) S.stamina = Math.max(0, S.stamina - 24 * dt);
   else S.stamina = Math.min(100, S.stamina + (moving ? 10 : 18) * dt);
   const speed = sprinting ? 8.6 : 5;
+  pMoving = moving; pSprinting = sprinting;
   if (moving) {
     mx /= ml; mz /= ml;
     let nx = player.position.x + mx * speed * dt, nz = player.position.z + mz * speed * dt;
@@ -1516,12 +1742,19 @@ function update(dt) {
   } else {
     walkPhase *= 0.85;
   }
+  const gy = groundAt(player.position.x, player.position.z, player.position.y);
   if (keys.Space && onGround) { velY = 9.5; onGround = false; }
-  velY -= 28 * dt;
-  player.position.y += velY * dt;
-  if (player.position.y <= 0) { player.position.y = 0; velY = 0; onGround = true; }
+  if (onGround && player.position.y - gy < 0.6) { player.position.y = gy; velY = 0; } // follow floors and stairs
+  else {
+    velY -= 28 * dt;
+    player.position.y += velY * dt;
+    if (player.position.y <= gy) { player.position.y = gy; velY = 0; onGround = true; } else onGround = false;
+  }
   const inside = inHospital(player.position.x, player.position.z, -0.2);
   if (inside && !S.enteredHosp) { S.enteredHosp = true; showMsg('Opuszczony szpital. Coś tu chodzi po korytarzach…', '#ff8787', 4000); }
+  const lvlNow = inside ? playerLevel() : 1;
+  if (lvlNow === 0 && !S.enteredCellar) { S.enteredCellar = true; showMsg('Piwnica. Coś tu nasłuchuje… nie biegaj.', '#ff8787', 4500); }
+  if (lvlNow === 2 && !S.enteredUpper) { S.enteredUpper = true; showMsg('Pierwsze piętro. Ciii…', '#ff8787', 3500); }
 
   // limbs
   const sw = moving ? Math.sin(walkPhase) * (sprinting ? 1.0 : 0.7) : 0;
@@ -1595,7 +1828,7 @@ function update(dt) {
   // --- batteries bob
   for (const b of batteries) if (!b.taken) {
     b.g.rotation.y += dt * 1.5;
-    b.g.position.y = 0.55 + Math.sin(S.totalTime * 2 + b.g.userData.phase) * 0.12;
+    b.g.position.y = b.y + 0.55 + Math.sin(S.totalTime * 2 + b.g.userData.phase) * 0.12;
   }
 
   // --- torch
@@ -1615,14 +1848,23 @@ function update(dt) {
     if (Math.random() < dt * 4) SFX.crackle(0.5);
   } else torchLight.intensity = 0;
 
-  // --- hospital lamps + beacon
+  // --- hospital lamps (real lights only on your storey) + beacon
   if (Math.abs(player.position.x - HOSP.x) < 60 && Math.abs(player.position.z - HOSP.z) < 60) {
-    for (const L of lamps) {
+    for (const row of lampFix) for (const L of row) {
       L.t -= dt;
-      if (L.t <= 0) { L.on = !L.on; L.t = L.on ? rand(0.5, 4) : rand(0.03, 0.5); if (inside && Math.random() < 0.5) SFX.flick(); }
-      L.l.intensity = L.on ? 14 + Math.random() * 3 : 0;
-      L.fix.material.color.setHex(L.on ? 0xdff2ff : 0x222222);
+      if (L.t <= 0) {
+        L.on = !L.on;
+        L.t = L.on ? rand(0.5, L.lvl === 0 ? 1.5 : 4) : rand(0.03, L.lvl === 0 ? 2 : 0.5);
+        if (inside && L.lvl === lvlNow && Math.random() < 0.5) SFX.flick();
+      }
+      L.m.material.color.setHex(L.on ? (L.lvl === 0 ? 0xff4030 : 0xdff2ff) : 0x222222);
     }
+    lampFix[lvlNow].forEach((L, i) => {
+      const l = lampLights[i];
+      l.position.set(hx(L.x), LEVEL_Y[lvlNow] + LV - 0.9, hz(L.z));
+      l.color.setHex(lvlNow === 0 ? 0xff3a2a : 0xcfe6ff);
+      l.intensity = L.on ? (lvlNow === 0 ? 9 : 14) + Math.random() * 3 : 0;
+    });
   }
   beaconMat.color.setHex(Math.random() < 0.015 ? 0x300000 : 0xc01010);
 
@@ -1630,16 +1872,19 @@ function update(dt) {
   const cp = Math.cos(pitch);
   const fx = Math.sin(yaw) * cp, fy = Math.sin(pitch), fz = Math.cos(yaw) * cp;
   const tgt = _v.set(player.position.x + rx * 0.9, player.position.y + 2.5, player.position.z + rz * 0.9);
-  camera.position.set(tgt.x - fx * camDist, Math.max(0.4, tgt.y - fy * camDist), tgt.z - fz * camDist);
+  camera.position.set(tgt.x - fx * camDist, Math.max(player.position.y + 0.4, tgt.y - fy * camDist), tgt.z - fz * camDist);
   if (inHospital(player.position.x, player.position.z, 8)) {
-    // keep the camera on the player's side of hospital walls and under the roof
+    // keep the camera on the player's side of hospital walls and under the ceiling of this storey
     const px = player.position.x, pz = player.position.z, py = tgt.y;
-    const t = rayT(px, pz, camera.position.x, camera.position.z, 0.25);
+    const t = rayT(px, pz, camera.position.x, camera.position.z, 0.25, player.position.y + 1.5);
     if (t < 1) {
       const k = Math.max(0.02, t - 0.03);
       camera.position.set(px + (camera.position.x - px) * k, py + (camera.position.y - py) * k, pz + (camera.position.z - pz) * k);
     }
-    if (inside || inHospital(camera.position.x, camera.position.z)) camera.position.y = Math.min(camera.position.y, HOSP.h - 0.35);
+    if (inside || inHospital(camera.position.x, camera.position.z)) {
+      const lb = LEVEL_Y[playerLevel()];
+      camera.position.y = clamp(camera.position.y, lb + 0.5, lb + LV - 0.45);
+    }
   }
   if (shake > 0) {
     camera.position.x += rand(-1, 1) * shake; camera.position.y += rand(-1, 1) * shake;
@@ -1667,6 +1912,7 @@ function update(dt) {
   updateWatchers(dt);
   updatePatients(dt, inside);
   updateNurse(dt, inside);
+  updateCrawler(dt, inside);
 
   // fear
   let fearT = 8;
@@ -1679,6 +1925,8 @@ function update(dt) {
   if (inside) fearT += 12;
   if (patients.some(p => p.state === 'chase')) fearT += 25;
   if (inside && NURSE.g.position.distanceTo(player.position) < 8) fearT += 25;
+  if (CRAWLER.state === 'hunt') fearT += 30;
+  if (lvlNow === 0) fearT += 8;
   if (S.torchLit) fearT -= 10;
   S.fear = lerp(S.fear, clamp(fearT, 0, 100), dt * (fearT > S.fear ? 1.5 : 0.35));
   fearEl.style.opacity = (S.fear / 100) * 0.85;
@@ -1715,6 +1963,7 @@ function update(dt) {
   insideK = lerp(insideK, inside ? 1 : 0, Math.min(1, dt * 3));
   ambient.intensity *= 1 - 0.65 * insideK;
   moonLight.intensity *= 1 - 0.9 * insideK;
+  if (lvlNow === 0) ambient.intensity *= 0.55; // the basement is darker still
   if (windGain) windGain.gain.setTargetAtTime(0.16 + S.fear * 0.0012, AC.currentTime, 0.5);
   if (dawnK > 0 && S.dawnMsg !== S.night) { S.dawnMsg = S.night; showMsg('Niebo zaczyna szarzeć… jeszcze trochę.', '#ffd9a0', 4000); }
 
