@@ -119,7 +119,28 @@ html.touch #msg { font-size: 17px; top: 18%; }
 #tPause { position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); pointer-events: auto;
   font-size: 14px; padding: 6px 14px; border-radius: 8px; background: rgba(15,18,24,.6); border: 2px solid rgba(255,255,255,.18); box-shadow: none; }
 @media (orientation: portrait) { html.touch #rotate { display: flex; z-index: 50; } }
+/* ---------- Lobby ---------- */
+.lobbyLabel { font-size: 13px; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.diffs { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.diff { font-size: 22px; padding: 10px 14px; min-width: 110px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.15); box-shadow: none; color: var(--text); }
+.diff b { font-size: 15px; }
+.diff:active { box-shadow: none; }
+.diff.sel { border-color: #ffd34d; background: rgba(255,211,77,.14); }
+.diff[data-d="nightmare"].sel { border-color: var(--blood); background: rgba(179,18,31,.28); }
+.diffDesc { min-height: 2.8em; max-width: 520px; color: #c9b9a8; font-size: 14px; line-height: 1.4; margin: 10px 0 14px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 18px; }
+button.ghost { font-size: 16px; font-weight: 600; padding: 8px 18px; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.18); box-shadow: none; }
+button.ghost:active { box-shadow: none; }
+#tMute { position: absolute; top: calc(10px + env(safe-area-inset-top)); left: calc(50% + 34px); pointer-events: auto;
+  font-size: 14px; padding: 6px 10px; border-radius: 8px; background: rgba(15,18,24,.6); border: 2px solid rgba(255,255,255,.18); box-shadow: none; }
+
 @media (max-height: 500px) {
+  .diff { font-size: 18px; padding: 6px 10px; min-width: 92px; }
+  .diff b { font-size: 13px; }
+  .diffDesc { font-size: 12px; margin: 6px 0 8px; }
+  .row { margin-bottom: 10px; }
+  button.ghost { font-size: 14px; padding: 6px 14px; }
   .sub { margin: 2px 0 10px; font-size: 15px; }
   .help { font-size: 13px; margin-bottom: 10px; }
   .tips { font-size: 12px; margin-bottom: 12px; }

@@ -35,6 +35,7 @@
     <div><b>R</b>wbij truciznę</div>
     <div><b>F</b>latarka</div>
     <div><b>⇧</b>sprint</div>
+    <div><b>M</b>dźwięk</div>
   </div>
   <div id="bars" class="panel">
     <div class="bar" id="b-hp"><span>❤️</span><div class="track"><div class="fill" style="background:#e03131"></div></div><span class="val"></span></div>
@@ -65,12 +66,30 @@
     <button class="tb sm" id="tHeal" aria-label="Strzykawka lecznicza">💉</button>
     <button class="tb sm" id="tStab" aria-label="Wbij truciznę">☠️</button>
     <button id="tPause" aria-label="Pauza">❚❚</button>
+    <button id="tMute" aria-label="Dźwięk">🔊</button>
   </div>
 </div>
 
 <div id="menu" class="screen">
   <div class="title">Nie Patrz Wstecz</div>
   <div class="sub">Survival horror • Przetrwaj noc w lesie</div>
+  <div class="lobbyLabel">Poziom trudności</div>
+  <div class="diffs" role="radiogroup" aria-label="Poziom trudności">
+    <button class="diff" type="button" role="radio" data-d="easy">🌙<b>Łatwy</b></button>
+    <button class="diff" type="button" role="radio" data-d="normal">🌲<b>Normalny</b></button>
+    <button class="diff" type="button" role="radio" data-d="hard">💀<b>Trudny</b></button>
+    <button class="diff" type="button" role="radio" data-d="nightmare">👁️<b>Koszmar</b></button>
+  </div>
+  <div id="diffDesc" class="diffDesc"></div>
+  <div class="row">
+    <button class="ghost muteBtn" type="button">🔊 Dźwięk: wł.</button>
+    <button class="ghost" id="howtoBtn" type="button">❓ Jak grać</button>
+  </div>
+  <button id="play">GRAJ</button>
+</div>
+
+<div id="howto" class="screen hidden">
+  <div class="title" style="font-size:clamp(32px, min(8vw, 12vh), 72px)">Jak grać</div>
   <div class="help mob">
     <span><b>Lewy kciuk</b> chodzenie</span><span><b>Prawy kciuk</b> rozglądanie</span>
     <span><b>Joystick do końca</b> sprint</span><span><b>⤒</b> skok</span>
@@ -92,12 +111,16 @@
     W lesie stoi opuszczony szpital — znajdziesz tam strzykawki, ale nie wiesz, co w nich jest.
     A Siostra rusza się tylko wtedy, gdy na nią nie patrzysz.
   </div>
-  <button id="play">GRAJ</button>
+  <button id="howtoBack">WRÓĆ</button>
 </div>
 
 <div id="pause" class="screen hidden">
   <div class="title" style="font-size:72px">Pauza</div>
   <div class="sub">Las czeka…</div>
+  <div class="row">
+    <button class="ghost muteBtn" type="button">🔊 Dźwięk: wł.</button>
+    <button class="ghost" id="toLobby" type="button">🏠 Lobby</button>
+  </div>
   <button id="resume">WRÓĆ</button>
 </div>
 

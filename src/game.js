@@ -595,7 +595,7 @@ let AC = null, master, noiseBuf, windGain, fearGain, droneGain;
 function initAudio() {
   if (AC) { AC.resume(); return; }
   AC = new (window.AudioContext || window.webkitAudioContext)();
-  master = AC.createGain(); master.gain.value = 0.9;
+  master = AC.createGain(); master.gain.value = muted ? 0 : 0.9;
   const comp = AC.createDynamicsCompressor();
   master.connect(comp); comp.connect(AC.destination);
   noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
@@ -712,11 +712,62 @@ let insideK = 0;
 const keys = {};
 
 // ===================================================================
+// Lobby settings: difficulty + sound (remembered on this device)
+// ===================================================================
+const DIFFS = {
+  easy: { name: 'Łatwy', aggr: 0.65, speed: 0.85, dmg: 0.6, drain: 0.7, battery: 0.7, wood: 5, berries: 4,
+    desc: 'Na rozgrzewkę. Stwór rzadziej poluje i wolniej biega, potwory słabiej ranią, a głód i zimno działają wolniej. Na start: 5 drewna i 4 jagody.' },
+  normal: { name: 'Normalny', aggr: 1, speed: 1, dmg: 1, drain: 1, battery: 1, wood: 0, berries: 2,
+    desc: 'Las jest groźny, ale da się przetrwać. Tak, jak gra ma wyglądać.' },
+  hard: { name: 'Trudny', aggr: 1.35, speed: 1.12, dmg: 1.3, drain: 1.25, battery: 1.25, wood: 0, berries: 1,
+    desc: 'Stwór poluje częściej i biega szybciej, potwory mocniej ranią, a bateria, jedzenie i ciepło znikają szybciej.' },
+  nightmare: { name: 'Koszmar', aggr: 1.7, speed: 1.22, dmg: 1.6, drain: 1.5, battery: 1.5, wood: 0, berries: 0,
+    desc: 'Tylko dla najodważniejszych. Wszystko w lesie chce cię dopaść, a każdy błąd może być ostatni.' },
+};
+const store = {
+  get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+};
+let diffKey = DIFFS[store.get('npw-diff', 'normal')] ? store.get('npw-diff', 'normal') : 'normal';
+let DF = DIFFS[diffKey];
+function renderDiff() {
+  document.querySelectorAll('.diff').forEach(b => {
+    const on = b.dataset.d === diffKey;
+    b.classList.toggle('sel', on); b.setAttribute('aria-checked', on);
+  });
+  $('diffDesc').textContent = DIFFS[diffKey].desc;
+}
+document.querySelectorAll('.diff').forEach(b => b.addEventListener('click', () => {
+  diffKey = b.dataset.d; DF = DIFFS[diffKey];
+  store.set('npw-diff', diffKey); renderDiff();
+}));
+renderDiff();
+
+let muted = store.get('npw-muted', '0') === '1';
+function applyMute() {
+  if (master) master.gain.setTargetAtTime(muted ? 0 : 0.9, AC.currentTime, 0.05);
+  document.querySelectorAll('.muteBtn').forEach(b => { b.textContent = muted ? '🔇 Dźwięk: wył.' : '🔊 Dźwięk: wł.'; });
+  $('tMute').textContent = muted ? '🔇' : '🔊';
+}
+function toggleMute() {
+  muted = !muted;
+  store.set('npw-muted', muted ? '1' : '0');
+  applyMute();
+  showMsg(muted ? 'Dźwięk wyłączony (M)' : 'Dźwięk włączony (M)', '#ccc', 1200);
+}
+document.querySelectorAll('.muteBtn').forEach(b => b.addEventListener('click', toggleMute));
+applyMute();
+$('howtoBtn').onclick = () => { $('menu').classList.add('hidden'); $('howto').classList.remove('hidden'); };
+$('howtoBack').onclick = () => { $('howto').classList.add('hidden'); $('menu').classList.remove('hidden'); };
+$('toLobby').onclick = () => location.reload();
+
+// ===================================================================
 // Input
 // ===================================================================
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
+  if (e.code === 'KeyM' && !e.repeat) toggleMute();
   if (!S.playing) return;
   if (e.repeat) return;
   if (e.code === 'KeyF') toggleFlash();
@@ -811,6 +862,7 @@ if (TOUCH) {
   tap('tHeal', useHeal);
   tap('tStab', usePoison);
   tap('tPause', pauseGame);
+  tap('tMute', toggleMute);
 
   // stop iOS Safari from scrolling, zooming or bouncing the page
   document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
@@ -820,6 +872,10 @@ if (TOUCH) {
 document.addEventListener('visibilitychange', () => { if (document.hidden && S.playing) pauseGame(); });
 
 function startGame() {
+  if (!S.started) {
+    S.wood = DF.wood; S.berries = DF.berries;
+    $('obj').textContent = `Przetrwaj do 6:00 · ${DF.name}`;
+  }
   initAudio();
   $('menu').classList.add('hidden');
   $('pause').classList.add('hidden');
@@ -1046,7 +1102,7 @@ function drawScare(kind = 'stwor') {
 // ===================================================================
 const _v = new THREE.Vector3();
 function hourIndex() { return clamp((S.mins - 22 * 60) / 60, 0, 8); }
-function aggression() { return 1 + hourIndex() * 0.12 + (S.night - 1) * 0.35; }
+function aggression() { return (1 + hourIndex() * 0.12 + (S.night - 1) * 0.35) * DF.aggr; }
 function playerSafe() {
   const pp = player.position;
   if (S.torchLit || inHospital(pp.x, pp.z)) return true;
@@ -1099,7 +1155,7 @@ function onScreen(pos) {
 }
 // any damage from a creature; `scare` shows a full-screen jumpscare face
 function hurt(amount, cause, scare) {
-  S.hp -= amount;
+  S.hp -= amount * DF.dmg;
   S.hurtAt = S.totalTime; S.hurtCause = cause;
   S.fear = Math.min(100, S.fear + (scare ? 100 : 30));
   shake = Math.max(shake, scare ? 0.6 : 0.35);
@@ -1138,7 +1194,7 @@ function updateMonster(dt) {
       if (M.timer <= 0 && !dawn && inHospital(pp.x, pp.z, 2)) { M.timer = rand(8, 15); break; }
       if (M.timer <= 0 && !dawn) {
         const safe = playerSafe();
-        const p = 0.28 + hourIndex() * 0.06 + (S.night - 1) * 0.1;
+        const p = (0.28 + hourIndex() * 0.06 + (S.night - 1) * 0.1) * DF.aggr;
         if (!safe && Math.random() < p) startHunt(); else startStalk();
       }
       break;
@@ -1157,7 +1213,7 @@ function updateMonster(dt) {
     }
     case 'hunt': {
       M.huntT += dt;
-      let speed = 5.4 + hourIndex() * 0.18 + (S.night - 1) * 0.5;
+      let speed = (5.4 + hourIndex() * 0.18 + (S.night - 1) * 0.5) * DF.speed;
       if (lit) { M.exposure += dt; speed *= 0.2; } else M.exposure = Math.max(0, M.exposure - dt * 0.3);
       if (M.exposure > 1.3) { flickerT = 0.6; SFX.scream(screenPan(-dx, -dz)); monsterVanish(); showMsg('Odstraszone… na razie.', '#9fd3ff'); break; }
       // fire barrier
@@ -1222,14 +1278,14 @@ function gameOver(cause) {
   $('hud').classList.remove('on');
   $('cause').textContent = cause;
   const hrs = Math.floor(hourIndex()), mm = Math.floor((S.mins - 22 * 60) % 60);
-  $('overStats').innerHTML = `Noc: <b>${S.night}</b> • godzina śmierci: <b>${fmtClock(S.mins)}</b><br>Przetrwany czas tej nocy: <b>${hrs} h ${mm} min</b><br>Ścięte drzewa: <b>${S.treesCut}</b>`;
+  $('overStats').innerHTML = `Poziom: <b>${DF.name}</b> • Noc: <b>${S.night}</b> • godzina śmierci: <b>${fmtClock(S.mins)}</b><br>Przetrwany czas tej nocy: <b>${hrs} h ${mm} min</b><br>Ścięte drzewa: <b>${S.treesCut}</b>`;
   $('over').classList.remove('hidden');
 }
 function winNight() {
   S.playing = false;
   document.exitPointerLock?.();
   $('dawnSub').textContent = `Noc ${S.night} przetrwana. Stwór odszedł… na razie.`;
-  $('dawnStats').innerHTML = `Ścięte drzewa: <b>${S.treesCut}</b> • Spotkania ze Stworem: <b>${S.closeCalls}</b><br>Kolejna noc będzie trudniejsza.`;
+  $('dawnStats').innerHTML = `Poziom: <b>${DF.name}</b> • Ścięte drzewa: <b>${S.treesCut}</b> • Spotkania ze Stworem: <b>${S.closeCalls}</b><br>Kolejna noc będzie trudniejsza.`;
   $('dawn').classList.remove('hidden');
 }
 function fmtClock(mins) {
@@ -1290,7 +1346,7 @@ function updatePatients(dt, inside) {
       p.tx = pp.x; p.tz = pp.z; p.lost = 0;
     } else if (p.state === 'chase') { p.lost += dt; if (p.lost > 6) p.state = 'wander'; }
     let speed = 1.1;
-    if (p.state === 'chase') speed = 4.3 + (S.night - 1) * 0.3;
+    if (p.state === 'chase') speed = (4.3 + (S.night - 1) * 0.3) * DF.speed;
     else {
       p.wt -= dt;
       if (p.wt <= 0 || Math.hypot(p.tx - g.position.x, p.tz - g.position.z) < 0.5) {
@@ -1345,7 +1401,7 @@ function updateNurse(dt, inside) {
   const visible = lit && (onScreen(NV1) || onScreen(NV2)) && losClear(camera.position.x, camera.position.z, g.position.x, g.position.z);
   if (!visible && n.wake > 5) {
     n.moved = true;
-    const sp = 3.4 + (S.night - 1) * 0.4;
+    const sp = (3.4 + (S.night - 1) * 0.4) * DF.speed;
     if (d > 0.01) {
       g.position.x = clamp(g.position.x + dx / d * sp * dt, hx(-W + 0.5), hx(W - 0.5));
       g.position.z = clamp(g.position.z + dz / d * sp * dt, hz(-D + 0.5), hz(D - 0.5));
@@ -1487,16 +1543,16 @@ function update(dt) {
   if (keys.KeyE) interact();
 
   // --- stats
-  S.hunger = Math.max(0, S.hunger - dt * 100 / 300 * (sprinting ? 1.5 : 1));
+  S.hunger = Math.max(0, S.hunger - dt * 100 / 300 * (sprinting ? 1.5 : 1) * DF.drain);
   const nf = nearestLitFire(player.position.x, player.position.z);
   const nearFire = nf && nf.d < 6;
   if (nearFire) S.warmth = Math.min(100, S.warmth + 14 * dt);
   else if (S.torchLit) S.warmth = Math.min(100, S.warmth + 2.5 * dt);
-  else S.warmth = Math.max(0, S.warmth - dt * 100 / (150 - hrs * 6) * (sprinting ? 0.7 : 1) * (inside ? 0.5 : 1));
+  else S.warmth = Math.max(0, S.warmth - dt * 100 / (150 - hrs * 6) * (sprinting ? 0.7 : 1) * (inside ? 0.5 : 1) * DF.drain);
   if (S.hunger <= 0) S.hp -= 1.6 * dt;
   if (S.warmth <= 0) S.hp -= 2.2 * dt;
   if (S.hunger > 40 && S.warmth > 40) S.hp = Math.min(100, S.hp + 0.6 * dt);
-  if (S.flash && S.battery > 0) S.battery = Math.max(0, S.battery - dt * 100 / 110);
+  if (S.flash && S.battery > 0) S.battery = Math.max(0, S.battery - dt * 100 / 110 * DF.battery);
   if (S.battery <= 0 && S.flash) { S.flash = false; showMsg('Latarka zgasła…', '#fcc419'); SFX.click(); }
   if (S.hp <= 0 && !S.over) { gameOver(S.totalTime - S.hurtAt < 2 ? S.hurtCause : S.warmth <= 0 ? 'Zamarzłeś/aś w ciemności.' : S.hunger <= 0 ? 'Głód cię pokonał.' : 'Las cię pochłonął.'); return; }
 
